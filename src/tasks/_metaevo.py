@@ -11,7 +11,7 @@ import equinox.nn as nn
 import evosax as ex
 
 from jaxtyping import Float, Array, PyTree
-from typing import Callable, Union, Collection, Iterable, Optional
+from typing import Callable, Optional
 
 
 def MetaEvolutionTask(
@@ -43,16 +43,17 @@ def MetaEvolutionTask(
 		def _inner_step(carry, x):
 			"""inner evolutionay step"""
 			[es_state, key, goal] = carry
-			key, ask_key, init_key, model_key = jr.split(key, 3)
+			key, ask_key, init_key, model_key = jr.split(key, 4)
 			
-			dna, es_state = strategy.ask(ask_key, es_state, strategy_params)
+			x, es_state = strategy.ask(ask_key, es_state, strategy_params)
 			dna = shaper(x)
 			
-			init_state = state_initializer(init_key)._replace(dna=dna)
-			final_state, _ = model.rollout(init_state, model_key, devo_steps)
-			loss = loss_fn(final_state, goal)
+			init_state = state_initializer(init_key, dna)
+			final_state, _ = jax.vmap(model.rollout, in_axes=(0, None, None))(
+				init_state, model_key, devo_steps
+			)
+			loss = jax.vmap(loss_fn, in_axes=(0, None))(final_state, goal)
 			es_state = strategy.tell(x, loss, es_state, strategy_params)
-			
 			return [es_state, key, goal], loss
 		
 		key, key_init = jr.split(key)

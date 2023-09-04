@@ -111,17 +111,22 @@ class NCA(DevoModel):
 
 
 if __name__ == '__main__':
+	from src.models._utils import render_vid
+	import matplotlib.pyplot as plt
+
 	W = H = 64
 	C = 16
-	nca = NCA(C, 3, key=jr.PRNGKey(1))
+	nca = NCA(C, 3, key=jr.PRNGKey(1010101))
 
 	s0 = NCAState(
 		dna = jnp.ones((C,)),
-		X = jnp.zeros((C, W, H)).at[-1, W//2, H//2].set(1.)
+		X = jnp.zeros((C, W, H)).at[:, W//2, H//2].set(.5)
 	)
 
-	_, states = nca.rollout(s0, jr.PRNGKey(1), 100)
-	print(states.X.shape)
+	_, states = nca.rollout(s0, jr.PRNGKey(101), 100)
+	
+	anim = render_vid(jnp.clip(states.X[:, [0, 1, 2, -1], ...].transpose([0,2,3,1]), 0., 1.))
+	plt.show()
 
 
 

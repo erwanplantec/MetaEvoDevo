@@ -8,7 +8,7 @@ import pickle
 
 def pickle_save(filename, params):
     with open(filename, "wb") as f:
-        pickle.dump(params, filename)
+        pickle.dump(params, f)
 
 def progress_bar_scan(num_samples, message=None):
     "Progress bar for a JAX scan"

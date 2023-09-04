@@ -37,7 +37,8 @@ class DevoModel(eqx.Module):
 			ns = self.__call__(s, sk)
 			return [ns, k], ns
 
-		return jax.lax.scan(_step, [init_sate, key], None, n)
+		[state, _], states = jax.lax.scan(_step, [init_sate, key], None, n)
+		return state, states
 
 	#-------------------------------------------------------------------
 
