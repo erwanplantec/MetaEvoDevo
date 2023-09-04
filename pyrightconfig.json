@@ -1,0 +1,6 @@
+{
+	// Install LSP-json to get validation and autocompletion in this file.
+	"venvPath": "/USers/erpl/anaconda3/envs",
+	"venv": "metandp",
+	"reportGeneralTypeIssues": false
+}

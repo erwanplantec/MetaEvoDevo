@@ -1,0 +1,107 @@
+from os import stat
+from src.models._base import State
+
+import jax
+import jax.numpy as jnp
+import jax.random as jr
+import jax.nn as jnn
+
+import equinox as eqx 
+import equinox.nn as nn
+import evosax as ex
+
+from jaxtyping import Float, Array, PyTree
+from typing import Callable, Union, Collection, Iterable, Optional
+
+
+def MetaEvolutionTask(
+	statics: PyTree[...],
+	goals: State,
+	loss_fn: Callable[[State, State], float],
+	state_initializer: Callable[[jr.PRNGKeyArray], State],
+	strategy: ex.Strategy,
+	strategy_params: Optional[ex.EvoParams] = None,
+	inner_generations: int = 200,
+	devo_steps: int = 50,
+	shaper: Callable = lambda x: x
+	):
+	"""MetaEvolutionTask. Evaluate parameters of a DevoModel by searching dna sequences 
+	minimizing loss between final state of development and goal states. Fitness of params 
+	is the minimum loss reached.
+	"""
+
+	if strategy_params is None:
+		strategy_params = strategy.default_params
+
+	#-------------------------------------------------------------------
+
+	def _inner_loop(key, params, goal):
+		"""run the inner evolution loop with provided strategy and return minimum loss obtained"""
+		
+		model = eqx.combine(params, statics)
+		
+		def _inner_step(carry, x):
+			"""inner evolutionay step"""
+			[es_state, key, goal] = carry
+			key, ask_key, init_key, model_key = jr.split(key, 3)
+			
+			dna, es_state = strategy.ask(ask_key, es_state, strategy_params)
+			dna = shaper(x)
+			
+			init_state = state_initializer(init_key)._replace(dna=dna)
+			final_state, _ = model.rollout(init_state, model_key, devo_steps)
+			loss = loss_fn(final_state, goal)
+			es_state = strategy.tell(x, loss, es_state, strategy_params)
+			
+			return [es_state, key, goal], loss
+		
+		key, key_init = jr.split(key)
+		es_state = strategy.initialize(key_init, strategy_params)
+		_, losses = jax.lax.scan(_inner_step, [es_state, key, goal], jnp.arange(inner_generations))
+		return losses.min()
+
+	#-------------------------------------------------------------------
+
+	def _eval(key, params):
+		"""Evaluation function
+		compute the average loss over the goals"""
+		return jax.vmap(_inner_loop, in_axes=(None, None, 0))(key, params, goals).mean()
+		
+	#-------------------------------------------------------------------
+
+	return _eval
+
+
+def MetaGATask(
+	statics: PyTree, 
+	goals: Float[Array, "n_goals ..."], 
+	loss_fn: Callable[[State, State], float],
+	state_initializer: Callable[[jr.PRNGKeyArray], State],
+	num_dims: int,
+	inner_generations: int = 200, 
+	popsize: int = 64,
+	ga_params: dict = {},
+	devo_steps: int = 50,
+	shaper: Callable = lambda x: x):
+	"""Summary
+	
+	Args:
+	    statics (Collection): Description
+	    goals (jax.Array): Description
+	    num_dims (int): Description
+	    inner_generations (int, optional): Description
+	    popsize (int, optional): Description
+	    ga_params (dict, optional): Description
+	    shaper (Callable, optional): Description
+	
+	Returns:
+	    TYPE: Description
+	"""
+	strategy = ex.SimpleGA(popsize=popsize, num_dims=num_dims, **ga_params)
+	_ga_params = strategy.default_params
+	return MetaEvolutionTask(statics, goals, loss_fn, state_initializer, 
+		strategy, _ga_params, inner_generations, devo_steps, shaper)
+
+
+
+
